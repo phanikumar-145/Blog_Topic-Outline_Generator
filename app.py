@@ -63,16 +63,16 @@ def generate_outline(topic, target_audience):
         try:
             generation = langfuse.generation(
                 name="blog_outline_generation",
-                model="llama3-8b-8192",
+                model="llama-3.1-8b-instant",
                 input=user_prompt
             )
         except Exception:
             pass
 
     try:
-        # Call Groq API using standard Llama-3 model
+        # Call Groq API using the updated production model string
         completion = groq_client.chat.completions.create(
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
