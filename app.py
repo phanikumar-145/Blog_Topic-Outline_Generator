@@ -1,4 +1,5 @@
 import re
+import os
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -11,15 +12,15 @@ load_dotenv()
 # -------------------------
 # Page Config
 # -------------------------
-
 st.set_page_config(
     page_title="AI Blog Outline Generator",
     page_icon="📝",
     layout="wide"
 )
 
+# -------------------------
 # Custom Styling
-
+# -------------------------
 st.markdown("""
 <style>
 
@@ -53,10 +54,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# -------------------------
 # Validation
-
+# -------------------------
 def is_valid_topic(topic):
-
     if not topic:
         return False
 
@@ -73,8 +74,10 @@ def is_valid_topic(topic):
 
     return True
 
-# Header
 
+# -------------------------
+# Header
+# -------------------------
 st.markdown(
     '<div class="main-title">📝 AI Blog Outline Generator</div>',
     unsafe_allow_html=True
@@ -85,103 +88,90 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# -------------------------
 # Inputs
-
+# -------------------------
 col1, col2 = st.columns(2)
 
 with col1:
-    topic = st.text_input(
-        "📌 Blog Topic",
-        placeholder="Artificial Intelligence"
-    )
+    topic = st.text_input("📌 Blog Topic", placeholder="Artificial Intelligence")
 
 with col2:
-    audience = st.text_input(
-        "🎯 Target Audience",
-        placeholder="Students"
-    )
+    audience = st.text_input("🎯 Target Audience", placeholder="Students")
 
-generate = st.button(
-    "🚀 Generate Outline",
-    use_container_width=True
-)
+generate = st.button("🚀 Generate Outline", use_container_width=True)
 
 # -------------------------
-# LLM
+# MAIN LOGIC (SAFE)
 # -------------------------
-
-llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    temperature=0
-)
-
-chain = prompt | llm | parser
-
-# -------------------------
-# Generate
-# -------------------------
-
 if generate:
 
     if not is_valid_topic(topic):
+        st.error("Invalid topic provided. Please enter a meaningful blog topic.")
+        st.stop()
 
-        st.error(
-            "Invalid topic provided. Please enter a meaningful blog topic."
+    groq_api_key = os.getenv("GROQ_API_KEY")
+
+    if not groq_api_key:
+        st.error("❌ GROQ_API_KEY not found in Secrets.")
+        st.stop()
+
+    try:
+        # Create LLM ONLY when needed (prevents freezing)
+        llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            temperature=0,
+            api_key=groq_api_key
         )
 
-    else:
+        chain = prompt | llm | parser
 
-        try:
+        with st.spinner("Generating outline..."):
 
-            with st.spinner("Generating outline..."):
+            response = chain.invoke({
+                "topic": topic,
+                "audience": audience
+            })
 
-                response = chain.invoke(
-                    {
-                        "topic": topic,
-                        "audience": audience
-                    }
-                )
+        st.success("Outline Generated Successfully! 🎉")
 
-            st.success("Outline Generated Successfully!")
+        # -------------------------
+        # Blog Title
+        # -------------------------
+        st.markdown("## 📝 Blog Title")
 
-            st.markdown("## 📝 Blog Title")
+        st.markdown(f"""
+        <div class="blog-card">
+            <h3>{response.blog_title}</h3>
+        </div>
+        """, unsafe_allow_html=True)
 
-            st.markdown(
-                f"""
-                <div class="blog-card">
-                    <h3>{response.blog_title}</h3>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        # -------------------------
+        # Sections
+        # -------------------------
+        st.markdown("## 📚 Outline Sections")
 
-            st.markdown("## 📚 Outline Sections")
+        for i, section in enumerate(response.outline_sections, start=1):
+            st.markdown(f"""
+            <div class="section-card">
+                <b>Section {i}</b><br><br>
+                {section}
+            </div>
+            """, unsafe_allow_html=True)
 
-            for i, section in enumerate(
-                response.outline_sections,
-                start=1
-            ):
+        # -------------------------
+        # Extra Info
+        # -------------------------
+        col1, col2 = st.columns(2)
 
-                st.markdown(
-                    f"""
-                    <div class="section-card">
-                        <b>Section {i}</b><br><br>
-                        {section}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+        with col1:
+            st.markdown("### 🎯 Target Audience")
+            st.info(response.target_audience)
 
-            col1, col2 = st.columns(2)
+        with col2:
+            st.markdown("### 🚀 Writing Goal")
+            st.success(response.writing_goal)
 
-            with col1:
-                st.markdown("### 🎯 Target Audience")
-                st.info(response.target_audience)
-
-            with col2:
-                st.markdown("### 🚀 Writing Goal")
-                st.success(response.writing_goal)
-
-        except Exception as e:
-
-            st.error(f"Error: {e}")
+    except Exception as e:
+        st.error("❌ Something went wrong while generating the outline.")
+        st.error(str(e))
