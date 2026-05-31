@@ -1,8 +1,7 @@
 import os
 import streamlit as st
 from groq import Groq
-from langfuse import get_client
-from langfuse.decorators import observe
+from langfuse import Langfuse
 
 # ==========================================
 # 1. PAGE CONFIGURATION & THEME FIX
@@ -32,30 +31,43 @@ if not GROQ_API_KEY:
 # Initialize Groq Client
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# Initialize Langfuse Client if keys exist
+# Initialize Universal Langfuse Client
 if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
     try:
-        # standard SDK initialization
-        langfuse_client = get_client()
+        langfuse = Langfuse(
+            public_key=LANGFUSE_PUBLIC_KEY,
+            secret_key=LANGFUSE_SECRET_KEY,
+            host=LANGFUSE_HOST
+        )
     except Exception:
-        langfuse_client = None
+        langfuse = None
 else:
-    langfuse_client = None
+    langfuse = None
     st.warning("⚠️ Langfuse keys not fully configured. App will run without analytics tracking.")
 
 # ==========================================
 # 3. GENERATION LOGIC FUNCTION
 # ==========================================
-# The @observe() decorator automatically initializes a trace without method crashes
-@observe(name="blog_outline_generation")
 def generate_outline(topic, target_audience):
-    """Generates a structured outline using Groq LLM and tracks it via Langfuse."""
+    """Generates a structured outline using Groq LLM and tracks it via Langfuse universally."""
     
     system_prompt = "You are an expert content strategist and SEO specialist."
     user_prompt = f"""Create a detailed, comprehensive blog outline for the topic: '{topic}'.
     Target Audience: {target_audience}
     
     Structure the response explicitly using 'Section 1: [Title]', 'Section 2: [Title]', etc., followed by bullet points detailing what to cover in that section."""
+
+    # Universal tracing structure compatible with all SDK versions
+    generation = None
+    if langfuse:
+        try:
+            generation = langfuse.generation(
+                name="blog_outline_generation",
+                model="llama3-8b-8192",
+                input=user_prompt
+            )
+        except Exception:
+            pass
 
     try:
         # Call Groq API using standard Llama-3 model
@@ -69,16 +81,28 @@ def generate_outline(topic, target_audience):
         )
         
         output_text = completion.choices[0].message.content
+        
+        # Log successful execution output back to Langfuse
+        if generation:
+            try:
+                generation.update(output=output_text)
+            except Exception:
+                pass
+                
         return output_text
 
     except Exception as e:
         st.error(f"API Error occurred: {e}")
+        if generation:
+            try:
+                generation.update(output=f"Error: {str(e)}")
+            except Exception:
+                pass
         return None
 
 # ==========================================
 # 4. STREAMLIT USER INTERFACE (UI)
 # ==========================================
-# Input Form Components (Tone of voice removed)
 with st.form("outline_form"):
     topic = st.text_input("What is the topic of your blog?", placeholder="e.g., Impact of AI in modern education")
     audience = st.text_input("Target Audience", value="General Public", placeholder="e.g., Teachers, Tech Enthusiasts")
@@ -100,7 +124,6 @@ if submit_button:
                 # Split raw result into structured UI block components
                 sections = raw_result.split("Section ")
                 
-                # Render them dynamically inside color-flipped native containers
                 if len(sections) > 1:
                     if sections[0].strip():
                         st.write(sections[0].strip())
@@ -110,11 +133,10 @@ if submit_button:
                         header = f"Section {lines[0].strip()}"
                         body = lines[1].strip() if len(lines) > 1 else ""
                         
-                        # Native container fixes text-visibility by auto-inverting text color
+                        # Native container auto-inverts text color based on light/dark mode
                         with st.container(border=True):
                             st.subheader(header)
                             st.markdown(body)
                 else:
-                    # Fallback default container if text split conditions fail
                     with st.container(border=True):
                         st.markdown(raw_result)
