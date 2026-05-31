@@ -1,40 +1,187 @@
-import altair as alt
-import numpy as np
-import pandas as pd
+import re
 import streamlit as st
+from dotenv import load_dotenv
 
-"""
-# Welcome to Streamlit!
+from langchain_groq import ChatGroq
+from prompts import prompt
+from parser import parser
 
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:.
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
+load_dotenv()
 
-In the meantime, below is an example of what you can do with just a few lines of code:
-"""
+# -------------------------
+# Page Config
+# -------------------------
 
-num_points = st.slider("Number of points in spiral", 1, 10000, 1100)
-num_turns = st.slider("Number of turns in spiral", 1, 300, 31)
+st.set_page_config(
+    page_title="AI Blog Outline Generator",
+    page_icon="📝",
+    layout="wide"
+)
 
-indices = np.linspace(0, 1, num_points)
-theta = 2 * np.pi * num_turns * indices
-radius = indices
+# Custom Styling
 
-x = radius * np.cos(theta)
-y = radius * np.sin(theta)
+st.markdown("""
+<style>
 
-df = pd.DataFrame({
-    "x": x,
-    "y": y,
-    "idx": indices,
-    "rand": np.random.randn(num_points),
-})
+.main-title {
+    text-align: center;
+    font-size: 3rem;
+    font-weight: bold;
+}
 
-st.altair_chart(alt.Chart(df, height=700, width=700)
-    .mark_point(filled=True)
-    .encode(
-        x=alt.X("x", axis=None),
-        y=alt.Y("y", axis=None),
-        color=alt.Color("idx", legend=None, scale=alt.Scale()),
-        size=alt.Size("rand", legend=None, scale=alt.Scale(range=[1, 150])),
-    ))
+.sub-title {
+    text-align: center;
+    color: gray;
+    margin-bottom: 30px;
+}
+
+.blog-card {
+    padding: 20px;
+    border-radius: 12px;
+    background-color: #1E293B;
+    margin-bottom: 20px;
+}
+
+.section-card {
+    padding: 15px;
+    border-radius: 10px;
+    background-color: #111827;
+    margin-bottom: 10px;
+    border-left: 5px solid #3B82F6;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# Validation
+
+def is_valid_topic(topic):
+
+    if not topic:
+        return False
+
+    topic = topic.strip()
+
+    if len(topic) < 2:
+        return False
+
+    if re.fullmatch(r"\d+", topic):
+        return False
+
+    if re.fullmatch(r"[^\w\s]+", topic):
+        return False
+
+    return True
+
+# Header
+
+st.markdown(
+    '<div class="main-title">📝 AI Blog Outline Generator</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="sub-title">Generate Professional Blog Outlines Instantly</div>',
+    unsafe_allow_html=True
+)
+
+# Inputs
+
+col1, col2 = st.columns(2)
+
+with col1:
+    topic = st.text_input(
+        "📌 Blog Topic",
+        placeholder="Artificial Intelligence"
+    )
+
+with col2:
+    audience = st.text_input(
+        "🎯 Target Audience",
+        placeholder="Students"
+    )
+
+generate = st.button(
+    "🚀 Generate Outline",
+    use_container_width=True
+)
+
+# -------------------------
+# LLM
+# -------------------------
+
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    temperature=0
+)
+
+chain = prompt | llm | parser
+
+# -------------------------
+# Generate
+# -------------------------
+
+if generate:
+
+    if not is_valid_topic(topic):
+
+        st.error(
+            "Invalid topic provided. Please enter a meaningful blog topic."
+        )
+
+    else:
+
+        try:
+
+            with st.spinner("Generating outline..."):
+
+                response = chain.invoke(
+                    {
+                        "topic": topic,
+                        "audience": audience
+                    }
+                )
+
+            st.success("Outline Generated Successfully!")
+
+            st.markdown("## 📝 Blog Title")
+
+            st.markdown(
+                f"""
+                <div class="blog-card">
+                    <h3>{response.blog_title}</h3>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.markdown("## 📚 Outline Sections")
+
+            for i, section in enumerate(
+                response.outline_sections,
+                start=1
+            ):
+
+                st.markdown(
+                    f"""
+                    <div class="section-card">
+                        <b>Section {i}</b><br><br>
+                        {section}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("### 🎯 Target Audience")
+                st.info(response.target_audience)
+
+            with col2:
+                st.markdown("### 🚀 Writing Goal")
+                st.success(response.writing_goal)
+
+        except Exception as e:
+
+            st.error(f"Error: {e}")
