@@ -121,9 +121,20 @@ if submit_button:
                 st.success("✨ Your Blog Outline is Ready!")
                 st.markdown("---")
                 
-                # Split raw result into structured UI block components
-                sections = raw_result.split("Section ")
+                # 1. Clean up lingering markdown artifacts (** or duplicate symbols)
+                clean_result = raw_result.replace("**\nSection", "\nSection").replace("**", "")
                 
+                # 2. Isolate Appendix cleanly if it exists in the output
+                if "Appendix:" in clean_result:
+                    main_outline, appendix_content = clean_result.split("Appendix:", 1)
+                elif "Appendix" in clean_result:
+                    main_outline, appendix_content = clean_result.split("Appendix", 1)
+                else:
+                    main_outline = clean_result
+                    appendix_content = None
+
+                # 3. Split and render the main chronological Sections
+                sections = main_outline.split("Section ")
                 if len(sections) > 1:
                     if sections[0].strip():
                         st.write(sections[0].strip())
@@ -139,4 +150,10 @@ if submit_button:
                             st.markdown(body)
                 else:
                     with st.container(border=True):
-                        st.markdown(raw_result)
+                        st.markdown(main_outline)
+
+                # 4. Render Appendix beautifully in its own dedicated standalone block
+                if appendix_content:
+                    with st.container(border=True):
+                        st.subheader("📚 Appendix & Extras")
+                        st.markdown(appendix_content.strip())
