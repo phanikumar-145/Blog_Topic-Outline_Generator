@@ -4,3 +4,6 @@ langchain-core
 langchain-groq
 python-dotenv
 pydantic
+streamlit
+groq
+langfuse
