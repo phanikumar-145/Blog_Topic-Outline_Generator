@@ -1,177 +1,147 @@
-import re
 import os
 import streamlit as st
-from dotenv import load_dotenv
+from groq import Groq
+from langfuse import Langfuse
+from langfuse.openai import openai # Langfuse wrapper for tracking
 
-from langchain_groq import ChatGroq
-from prompts import prompt
-from parser import parser
-
-load_dotenv()
-
-# -------------------------
-# Page Config
-# -------------------------
+# ==========================================
+# 1. PAGE CONFIGURATION & THEME FIX
+# ==========================================
 st.set_page_config(
-    page_title="AI Blog Outline Generator",
+    page_title="Blog Outline Generator",
     page_icon="📝",
-    layout="wide"
+    layout="centered"
 )
 
-# -------------------------
-# Custom Styling
-# -------------------------
-st.markdown("""
-<style>
+st.title("📝 Blog Outline Generator")
+st.write("Generate structured, production-ready blog outlines powered by Groq & Langfuse.")
 
-.main-title {
-    text-align: center;
-    font-size: 3rem;
-    font-weight: bold;
-}
+# ==========================================
+# 2. INITIALIZE CLIENTS (READING SECRETS)
+# ==========================================
+# Hugging Face Spaces automatically inject Settings -> Variables/Secrets into os.environ
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY")
+LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY")
+LANGFUSE_HOST = os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
 
-.sub-title {
-    text-align: center;
-    color: gray;
-    margin-bottom: 30px;
-}
+# Validate credentials gracefully
+if not GROQ_API_KEY:
+    st.error("❌ `GROQ_API_KEY` is missing! Please add it to your Space Secrets in the Settings tab.")
+    st.stop()
 
-.blog-card {
-    padding: 20px;
-    border-radius: 12px;
-    background-color: #1E293B;
-    margin-bottom: 20px;
-}
+# Initialize Groq Client
+groq_client = Groq(api_key=GROQ_API_KEY)
 
-.section-card {
-    padding: 15px;
-    border-radius: 10px;
-    background-color: #111827;
-    margin-bottom: 10px;
-    border-left: 5px solid #3B82F6;
-}
+# Initialize Langfuse Client if keys are provided
+if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+    langfuse = Langfuse(
+        public_key=LANGFUSE_PUBLIC_KEY,
+        secret_key=LANGFUSE_SECRET_KEY,
+        host=LANGFUSE_HOST
+    )
+else:
+    langfuse = None
+    st.warning("⚠️ Langfuse keys not fully configured. App will run without analytics tracking.")
 
-</style>
-""", unsafe_allow_html=True)
+# ==========================================
+# 3. GENERATION LOGIC FUNCTION
+# ==========================================
+def generate_outline(topic, target_audience, tone):
+    """Generates a structured outline using Groq LLM and registers a trace in Langfuse."""
+    
+    system_prompt = "You are an expert content strategist and SEO specialist."
+    user_prompt = f"""Create a detailed, comprehensive blog outline for the topic: '{topic}'.
+    Target Audience: {target_audience}
+    Tone of Voice: {tone}
+    
+    Structure the response explicitly using 'Section 1: [Title]', 'Section 2: [Title]', etc., followed by bullet points detailing what to cover in that section."""
 
-# -------------------------
-# Validation
-# -------------------------
-def is_valid_topic(topic):
-    if not topic:
-        return False
-
-    topic = topic.strip()
-
-    if len(topic) < 2:
-        return False
-
-    if re.fullmatch(r"\d+", topic):
-        return False
-
-    if re.fullmatch(r"[^\w\s]+", topic):
-        return False
-
-    return True
-
-
-# -------------------------
-# Header
-# -------------------------
-st.markdown(
-    '<div class="main-title">📝 AI Blog Outline Generator</div>',
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    '<div class="sub-title">Generate Professional Blog Outlines Instantly</div>',
-    unsafe_allow_html=True
-)
-
-# -------------------------
-# Inputs
-# -------------------------
-col1, col2 = st.columns(2)
-
-with col1:
-    topic = st.text_input("📌 Blog Topic", placeholder="Artificial Intelligence")
-
-with col2:
-    audience = st.text_input("🎯 Target Audience", placeholder="Students")
-
-generate = st.button("🚀 Generate Outline", use_container_width=True)
-
-# -------------------------
-# MAIN LOGIC (SAFE)
-# -------------------------
-if generate:
-
-    if not is_valid_topic(topic):
-        st.error("Invalid topic provided. Please enter a meaningful blog topic.")
-        st.stop()
-
-    groq_api_key = os.getenv("GROQ_API_KEY")
-
-    if not groq_api_key:
-        st.error("❌ GROQ_API_KEY not found in Secrets.")
-        st.stop()
+    # Trigger Langfuse tracking trace manually if initialized
+    trace_id = None
+    if langfuse:
+        trace = langfuse.trace(name="blog_outline_generation", input={"topic": topic, "tone": tone})
+        trace_id = trace.id
 
     try:
-        # Create LLM ONLY when needed (prevents freezing)
-        llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
-            temperature=0,
-            api_key=groq_api_key
+        # Call Groq API using standard Llama-3 model
+        completion = groq_client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.7,
         )
-
-        chain = prompt | llm | parser
-
-        with st.spinner("Generating outline..."):
-
-            response = chain.invoke({
-                "topic": topic,
-                "audience": audience
-            })
-
-        st.success("Outline Generated Successfully! 🎉")
-
-        # -------------------------
-        # Blog Title
-        # -------------------------
-        st.markdown("## 📝 Blog Title")
-
-        st.markdown(f"""
-        <div class="blog-card">
-            <h3>{response.blog_title}</h3>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # -------------------------
-        # Sections
-        # -------------------------
-        st.markdown("## 📚 Outline Sections")
-
-        for i, section in enumerate(response.outline_sections, start=1):
-            st.markdown(f"""
-            <div class="section-card">
-                <b>Section {i}</b><br><br>
-                {section}
-            </div>
-            """, unsafe_allow_html=True)
-
-        # -------------------------
-        # Extra Info
-        # -------------------------
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("### 🎯 Target Audience")
-            st.info(response.target_audience)
-
-        with col2:
-            st.markdown("### 🚀 Writing Goal")
-            st.success(response.writing_goal)
+        
+        output_text = completion.choices[0].message.content
+        
+        # Update Langfuse trace with success status
+        if langfuse and trace_id:
+            langfuse.generation(
+                trace_id=trace_id,
+                name="llama3_generation",
+                model="llama3-8b-8192",
+                input=user_prompt,
+                output=output_text
+            )
+            
+        return output_text
 
     except Exception as e:
-        st.error("❌ Something went wrong while generating the outline.")
-        st.error(str(e))
+        if langfuse and trace_id:
+            langfuse.trace(id=trace_id, output=f"Error: {str(e)}")
+        st.error(f"API Error occurred: {e}")
+        return None
+
+# ==========================================
+# 4. STREAMLIT USER INTERFACE (UI)
+# ==========================================
+# Input Form Components
+with st.form("outline_form"):
+    topic = st.text_input("What is the topic of your blog?", placeholder="e.g., Impact of AI in modern education")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        audience = st.text_input("Target Audience", value="General Public", placeholder="e.g., Teachers, Tech Enthusiasts")
+    with col2:
+        tone = st.selectbox("Tone of Voice", ["Professional", "Casual", "Informative", "Inspirational", "Witty"])
+        
+    submit_button = st.form_submit_button(label="Generate Outline")
+
+# Execution and Render Output
+if submit_button:
+    if not topic.strip():
+        st.warning("Please enter a valid topic before generating!")
+    else:
+        with st.spinner("Analyzing data and generating outline..."):
+            raw_result = generate_outline(topic, audience, tone)
+            
+            if raw_result:
+                st.success("✨ Your Blog Outline is Ready!")
+                st.markdown("---")
+                
+                # Parsing blocks to render inside native dynamic boxes
+                # This explicitly avoids the dark-on-dark text rendering bug
+                sections = raw_result.split("Section ")
+                
+                # If it split correctly into sections, render them beautifully
+                if len(sections) > 1:
+                    # Render introductory text if any exists before 'Section 1'
+                    if sections[0].strip():
+                        st.write(sections[0].strip())
+                        
+                    for section in sections[1:]:
+                        # Parse section sequence number and content body safely
+                        lines = section.split("\n", 1)
+                        header = f"Section {lines[0].strip()}"
+                        body = lines[1].strip() if len(lines) > 1 else ""
+                        
+                        # Native Streamlit border container that dynamically flips text colors
+                        with st.container(border=True):
+                            st.subheader(header)
+                            st.markdown(body)
+                else:
+                    # Fallback default text container if layout isn't cleanly structured
+                    with st.container(border=True):
+                        st.markdown(raw_result)
