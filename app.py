@@ -1,118 +1,167 @@
-# Streamlit for frontend UI
-
+import re
 import streamlit as st
-
-# Load environment variables
 from dotenv import load_dotenv
-import os
+
+from langchain_groq import ChatGroq
+from prompts import prompt
+from parser import parser
 
 load_dotenv()
 
-# LANGCHAIN + GROQ IMPORTS
-
-from langchain_groq import ChatGroq
-
-# Prompt Template
-from prompts import prompt
-
-# Output Parser
-from parser import parser
-
-# STREAMLIT PAGE CONFIG
+# Page Config
 st.set_page_config(
     page_title="AI Blog Outline Generator",
     page_icon="📝",
-    layout="centered"
+    layout="wide"
 )
 
-# APP TITLE
+# Custom Styling
+st.markdown("""
+<style>
 
-st.title("📝 AI Blog Outline Generator")
+.main-title {
+    text-align: center;
+    font-size: 3rem;
+    font-weight: bold;
+}
 
-# USER INPUTS
+.sub-title {
+    text-align: center;
+    color: gray;
+    margin-bottom: 30px;
+}
 
-# Blog Topic Input
-topic = st.text_input(
-    "Enter Blog Topic"
+.blog-card {
+    padding: 20px;
+    border-radius: 12px;
+    background-color: #1E293B;
+    margin-bottom: 20px;
+}
+
+.section-card {
+    padding: 15px;
+    border-radius: 10px;
+    background-color: #111827;
+    margin-bottom: 10px;
+    border-left: 5px solid #3B82F6;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# Validation
+def is_valid_topic(topic):
+    if not topic:
+        return False
+
+    topic = topic.strip()
+
+    if len(topic) < 2:
+        return False
+
+    if re.fullmatch(r"\d+", topic):
+        return False
+
+    if re.fullmatch(r"[^\w\s]+", topic):
+        return False
+
+    return True
+
+# Header
+st.markdown(
+    '<div class="main-title">📝 AI Blog Outline Generator</div>',
+    unsafe_allow_html=True
 )
 
-# Audience Input
-audience = st.text_input(
-    "Enter Target Audience"
+st.markdown(
+    '<div class="sub-title">Generate Professional Blog Outlines Instantly</div>',
+    unsafe_allow_html=True
 )
 
-if st.button("Generate"):
+# Inputs
+col1, col2 = st.columns(2)
 
-    # Validate Topic
-    if topic:
-        # LLM MODEL
-        # GROQ + LLAMA MODEL
+with col1:
+    topic = st.text_input(
+        "📌 Blog Topic",
+        placeholder="Artificial Intelligence"
+    )
 
-        llm = ChatGroq(
+with col2:
+    audience = st.text_input(
+        "🎯 Target Audience",
+        placeholder="Students"
+    )
 
-            # AI MODEL
-            model="llama-3.3-70b-versatile",
+generate = st.button(
+    "🚀 Generate Outline",
+    use_container_width=True
+)
 
-            # API KEY
-            api_key=os.getenv("GROQ_API_KEY")
+# LLM
+llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    temperature=0
+)
+
+chain = prompt | llm | parser
+
+# Generate
+if generate:
+    if not is_valid_topic(topic):
+        st.error(
+            "Invalid topic provided. Please enter a meaningful blog topic."
         )
-
-        # LANGCHAIN CHAIN
-        # Prompt → LLM → Parser
-
-        chain = prompt | llm | parser
-
-        # INVOKE CHAIN
-
-        response = chain.invoke({
-
-            # Dynamic Variables
-            "topic": topic,
-
-            # Audience input
-            "audience": audience
-            if audience
-            else "General Audience"
-        })
-
-        # JSON OUTPUT
-        st.subheader("Generated JSON Output")
-
-        st.json(
-            response.model_dump()
-        )
-
-        # NORMAL OUTPUT
-
-        st.subheader("Blog Title")
-
-        st.write(
-            response.blog_title
-        )
-
-        st.subheader("Outline Sections")
-
-        for section in response.outline_sections:
-
-            st.write("•", section)
-
-
-        st.subheader("Target Audience")
-
-        st.write(
-            response.target_audience
-        )
-
-
-        st.subheader("Writing Goal")
-
-        st.write(
-            response.writing_goal
-        )
-
-    # WARNING
     else:
+        try:
+            with st.spinner("Generating outline..."):
+                response = chain.invoke(
+                    {
+                        "topic": topic,
+                        "audience": audience
+                    }
+                )
 
-        st.warning(
-            "Please enter a blog topic"
-        )
+            st.success("Outline Generated Successfully!")
+
+            st.markdown("## 📝 Blog Title")
+
+            # Added color: #FFFFFF to make the title perfectly visible
+            st.markdown(
+                f"""
+                <div class="blog-card">
+                    <h3 style="color: #FFFFFF; margin: 0;">{response.blog_title}</h3>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            st.markdown("## 📚 Outline Sections")
+
+            for i, section in enumerate(
+                response.outline_sections,
+                start=1
+            ):
+                # Added color: #FFFFFF and color: #E2E8F0 to make the section text highly readable
+                st.markdown(
+                    f"""
+                    <div class="section-card">
+                        <b style="color: #3B82F6; font-size: 1.1rem;">Section {i}</b><br><br>
+                        <span style="color: #FFFFFF; font-size: 1rem; line-height: 1.5;">{section}</span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("### 🎯 Target Audience")
+                st.info(response.target_audience)
+
+            with col2:
+                st.markdown("### 🚀 Writing Goal")
+                st.success(response.writing_goal)
+
+        except Exception as e:
+            st.error(f"Error: {e}")
