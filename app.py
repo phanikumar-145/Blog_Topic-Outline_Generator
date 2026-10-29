@@ -1,279 +1,149 @@
-
 import os
-import traceback
-
 import streamlit as st
-from groq import Groq
-from langfuse import Langfuse
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 
 # -----------------------------
-# Streamlit page configuration
+# Streamlit Page Configuration
 # -----------------------------
 st.set_page_config(
-    page_title="Blog Outline Generator",
+    page_title="AI Blog Outline Generator",
     page_icon="📝",
     layout="centered"
 )
 
-st.title("📝 Blog Outline Generator")
-st.write(
-    "Generate structured, production-ready blog outlines "
-    "powered by Groq and Langfuse."
-)
+st.title("📝 AI Blog Outline Generator")
+st.write("Generate professional blog outlines instantly.")
 
 # -----------------------------
-# Environment variables
+# Load Groq API Key
 # -----------------------------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY")
-LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY")
-LANGFUSE_HOST = os.environ.get(
-    "LANGFUSE_HOST",
-    "https://cloud.langfuse.com"
-)
 
-# -----------------------------
-# Check Groq API key
-# -----------------------------
 if not GROQ_API_KEY:
     st.error(
-        "GROQ_API_KEY is missing. "
-        "Add it under your Hugging Face Space Settings "
-        "in Variables and secrets."
+        "GROQ_API_KEY is missing. Add it in "
+        "Hugging Face Space Settings → Variables and secrets."
     )
     st.stop()
 
 # -----------------------------
-# Initialize Groq client
+# Initialize Groq Model
 # -----------------------------
 try:
-    groq_client = Groq(
+    llm = ChatGroq(
+        model="llama-3.1-8b-instant",
         api_key=GROQ_API_KEY,
-        timeout=60.0,
+        temperature=0.7,
+        max_tokens=2000,
+        timeout=60,
         max_retries=2
     )
 except Exception as e:
-    st.error("Failed to initialize the Groq client.")
+    st.error("Could not initialize the Groq model.")
     st.code(f"{type(e).__name__}: {e}")
     st.stop()
 
 # -----------------------------
-# Initialize Langfuse (optional)
+# Create Prompt Template
 # -----------------------------
-langfuse = None
+prompt = ChatPromptTemplate.from_messages([
+    (
+        "system",
+        "You are an expert blog writer and SEO content strategist. "
+        "Create clear, structured, useful blog outlines."
+    ),
+    (
+        "human",
+        """
+Create a detailed blog outline for this topic:
 
-if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
-    try:
-        langfuse = Langfuse(
-            public_key=LANGFUSE_PUBLIC_KEY,
-            secret_key=LANGFUSE_SECRET_KEY,
-            host=LANGFUSE_HOST
-        )
-    except Exception as e:
-        st.warning(
-            "Langfuse initialization failed. "
-            "The app will continue without analytics."
-        )
-        print("Langfuse initialization error:")
-        print(traceback.format_exc())
-else:
-    st.info(
-        "Langfuse keys are not configured. "
-        "The app will run without analytics tracking."
-    )
-
-
-# -----------------------------
-# Generate blog outline
-# -----------------------------
-def generate_outline(topic, target_audience):
-
-    system_prompt = (
-        "You are an expert content strategist and SEO specialist. "
-        "Create clear, useful, well-organized blog outlines."
-    )
-
-    user_prompt = f"""
-Create a detailed blog outline for the topic: "{topic}".
-
-Target Audience: {target_audience}
+Topic: {topic}
+Target Audience: {audience}
 
 Requirements:
-1. Create a suitable blog title.
-2. Organize the outline into numbered sections.
-3. Use the format "Section 1: [Title]".
-4. Include bullet points explaining what each section should cover.
-5. Include a conclusion.
-6. Make the outline useful for the specified target audience.
+1. Suggest an engaging, SEO-friendly blog title.
+2. Include a short introduction.
+3. Organize the outline into numbered sections.
+4. Use headings and bullet points.
+5. Explain what each section should cover.
+6. Include relevant examples where appropriate.
+7. Add a conclusion.
+8. Suggest relevant SEO keywords at the end.
+9. Keep the outline clear and easy to follow.
 """
-
-    generation = None
-
-    # Optional Langfuse tracing
-    if langfuse:
-        try:
-            generation = langfuse.generation(
-                name="blog_outline_generation",
-                model="llama-3.1-8b-instant",
-                input=user_prompt
-            )
-        except Exception:
-            print("Langfuse tracing initialization failed:")
-            print(traceback.format_exc())
-
-    try:
-        # Call Groq API
-        completion = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
-            ],
-            temperature=0.7,
-            max_tokens=2500
-        )
-
-        output_text = completion.choices[0].message.content
-
-        if not output_text:
-            raise ValueError("Groq returned an empty response.")
-
-        # Record successful generation
-        if generation:
-            try:
-                generation.update(output=output_text)
-            except Exception:
-                print("Langfuse output tracking failed:")
-                print(traceback.format_exc())
-
-        return output_text
-
-    except Exception as e:
-        # Print full details in Hugging Face Space Logs
-        print("GROQ API ERROR")
-        print(traceback.format_exc())
-
-        # Show diagnostic details in the app
-        st.error("The request to the Groq API failed.")
-        st.write("Error type:")
-        st.code(type(e).__name__)
-
-        st.write("Error details:")
-        st.code(str(e))
-
-        cause = e.__cause__ or e.__context__
-
-        if cause:
-            st.write("Underlying cause:")
-            st.code(f"{type(cause).__name__}: {cause}")
-
-        # Record failure without hiding the original error
-        if generation:
-            try:
-                generation.update(
-                    output="Generation failed"
-                )
-            except Exception:
-                print("Langfuse error tracking failed:")
-                print(traceback.format_exc())
-
-        return None
-
+    )
+])
 
 # -----------------------------
-# User interface
+# Build LangChain
 # -----------------------------
-with st.form("outline_form"):
+chain = prompt | llm | StrOutputParser()
 
+# -----------------------------
+# User Input Form
+# -----------------------------
+with st.form("blog_outline_form"):
     topic = st.text_input(
-        "What is the topic of your blog?",
+        "Blog Topic",
         placeholder="e.g., Impact of AI in modern education"
     )
 
     audience = st.text_input(
         "Target Audience",
         value="General Public",
-        placeholder="e.g., Teachers, Tech Enthusiasts"
+        placeholder="e.g., Students, Teachers, Developers"
     )
 
-    submit_button = st.form_submit_button(
-        label="Generate Outline"
+    submitted = st.form_submit_button(
+        "Generate Blog Outline",
+        use_container_width=True
     )
 
-
 # -----------------------------
-# Display results
+# Generate Outline
 # -----------------------------
-if submit_button:
-
+if submitted:
     if not topic.strip():
-        st.warning("Please enter a valid blog topic.")
+        st.warning("Please enter a blog topic.")
 
     elif not audience.strip():
         st.warning("Please enter a target audience.")
 
     else:
-        with st.spinner("Generating your blog outline..."):
-            raw_result = generate_outline(
-                topic.strip(),
-                audience.strip()
+        try:
+            with st.spinner("Generating your blog outline..."):
+                response = chain.invoke({
+                    "topic": topic.strip(),
+                    "audience": audience.strip()
+                })
+
+            st.success("Your blog outline is ready!")
+            st.markdown("---")
+            st.markdown(response)
+
+            st.download_button(
+                label="Download Outline",
+                data=response,
+                file_name="blog_outline.txt",
+                mime="text/plain"
             )
 
-        if raw_result:
-            st.success("✨ Your Blog Outline is Ready!")
-            st.markdown("---")
+        except Exception as e:
+            st.error("Failed to generate the blog outline.")
 
-            clean_result = raw_result.replace("**", "")
+            # Show the error without exposing the API key
+            st.write("Error type:")
+            st.code(type(e).__name__)
 
-            # Separate appendix, if present
-            appendix_content = None
+            error_message = str(e).replace(
+                GROQ_API_KEY, "[REDACTED]"
+            )
+            st.write("Error details:")
+            st.code(error_message)
 
-            if "Appendix:" in clean_result:
-                main_outline, appendix_content = (
-                    clean_result.split("Appendix:", 1)
-                )
-            elif "Appendix" in clean_result:
-                main_outline, appendix_content = (
-                    clean_result.split("Appendix", 1)
-                )
-            else:
-                main_outline = clean_result
-
-            # Display sections
-            sections = main_outline.split("Section ")
-
-            if len(sections) > 1:
-
-                if sections[0].strip():
-                    st.markdown(sections[0].strip())
-
-                for section in sections[1:]:
-                    lines = section.split("\n", 1)
-
-                    header = f"Section {lines[0].strip()}"
-
-                    body = (
-                        lines[1].strip()
-                        if len(lines) > 1
-                        else ""
-                    )
-
-                    with st.container(border=True):
-                        st.subheader(header)
-                        st.markdown(body)
-
-            else:
-                with st.container(border=True):
-                    st.markdown(main_outline.strip())
-
-            # Display appendix
-            if appendix_content:
-                with st.container(border=True):
-                    st.subheader("📚 Appendix & Extras")
-                    st.markdown(appendix_content.strip())
+            st.info(
+                "Check your Groq API key, Hugging Face Space "
+                "secrets, and application logs."
+            )
