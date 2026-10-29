@@ -1,210 +1,279 @@
+
 import os
-import re
-import socket
 import traceback
 
 import streamlit as st
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
+from groq import Groq
+from langfuse import Langfuse
 
-from prompts import prompt
-from parser import parser
-
-
-# Load environment variables
-load_dotenv()
-
-
-# Page configuration
+# -----------------------------
+# Streamlit page configuration
+# -----------------------------
 st.set_page_config(
-    page_title="AI Blog Outline Generator",
+    page_title="Blog Outline Generator",
     page_icon="📝",
-    layout="wide"
+    layout="centered"
 )
 
-
-# Check cloud configuration
-api_key = os.getenv("GROQ_API_KEY")
-
+st.title("📝 Blog Outline Generator")
 st.write(
-    "Groq API key configured:",
-    bool(api_key)
+    "Generate structured, production-ready blog outlines "
+    "powered by Groq and Langfuse."
 )
 
+# -----------------------------
+# Environment variables
+# -----------------------------
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+LANGFUSE_PUBLIC_KEY = os.environ.get("LANGFUSE_PUBLIC_KEY")
+LANGFUSE_SECRET_KEY = os.environ.get("LANGFUSE_SECRET_KEY")
+LANGFUSE_HOST = os.environ.get(
+    "LANGFUSE_HOST",
+    "https://cloud.langfuse.com"
+)
+
+# -----------------------------
+# Check Groq API key
+# -----------------------------
+if not GROQ_API_KEY:
+    st.error(
+        "GROQ_API_KEY is missing. "
+        "Add it under your Hugging Face Space Settings "
+        "in Variables and secrets."
+    )
+    st.stop()
+
+# -----------------------------
+# Initialize Groq client
+# -----------------------------
 try:
-    socket.getaddrinfo("api.groq.com", 443)
-    st.write("Groq DNS lookup: successful")
+    groq_client = Groq(
+        api_key=GROQ_API_KEY,
+        timeout=60.0,
+        max_retries=2
+    )
 except Exception as e:
-    st.write("Groq DNS lookup failed:", str(e))
+    st.error("Failed to initialize the Groq client.")
+    st.code(f"{type(e).__name__}: {e}")
+    st.stop()
 
+# -----------------------------
+# Initialize Langfuse (optional)
+# -----------------------------
+langfuse = None
 
-# Custom styling
-st.markdown("""
-<style>
-.main-title {
-    text-align: center;
-    font-size: 3rem;
-    font-weight: bold;
-}
-
-.sub-title {
-    text-align: center;
-    color: gray;
-    margin-bottom: 30px;
-}
-
-.blog-card {
-    padding: 20px;
-    border-radius: 12px;
-    background-color: #1E293B;
-    margin-bottom: 20px;
-}
-
-.section-card {
-    padding: 15px;
-    border-radius: 10px;
-    background-color: #111827;
-    margin-bottom: 10px;
-    border-left: 5px solid #3B82F6;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-# Topic validation
-def is_valid_topic(topic):
-    if not topic or len(topic.strip()) < 2:
-        return False
-
-    topic = topic.strip()
-
-    if not re.search(r"[a-zA-Z]", topic):
-        return False
-
-    if re.fullmatch(r"[^\w\s]+", topic):
-        return False
-
-    return True
-
-
-# Header
-st.markdown(
-    '<div class="main-title">📝 AI Blog Outline Generator</div>',
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    '<div class="sub-title">'
-    'Generate Professional Blog Outlines Instantly'
-    '</div>',
-    unsafe_allow_html=True
-)
-
-
-# Input fields
-col1, col2 = st.columns(2)
-
-with col1:
-    topic = st.text_input(
-        "📌 Blog Topic",
-        placeholder="Artificial Intelligence",
-        key="blog_topic"
-    )
-
-with col2:
-    audience = st.text_input(
-        "🎯 Target Audience",
-        placeholder="Students",
-        key="blog_audience"
+if LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY:
+    try:
+        langfuse = Langfuse(
+            public_key=LANGFUSE_PUBLIC_KEY,
+            secret_key=LANGFUSE_SECRET_KEY,
+            host=LANGFUSE_HOST
+        )
+    except Exception as e:
+        st.warning(
+            "Langfuse initialization failed. "
+            "The app will continue without analytics."
+        )
+        print("Langfuse initialization error:")
+        print(traceback.format_exc())
+else:
+    st.info(
+        "Langfuse keys are not configured. "
+        "The app will run without analytics tracking."
     )
 
 
-# Generate button
-generate = st.button(
-    "🚀 Generate Outline",
-    use_container_width=True,
-    key="generate_outline"
-)
-
-
+# -----------------------------
 # Generate blog outline
-if generate:
+# -----------------------------
+def generate_outline(topic, target_audience):
 
-    if not is_valid_topic(topic):
-        st.error(
-            "Invalid topic provided. "
-            "Please enter a meaningful blog topic."
+    system_prompt = (
+        "You are an expert content strategist and SEO specialist. "
+        "Create clear, useful, well-organized blog outlines."
+    )
+
+    user_prompt = f"""
+Create a detailed blog outline for the topic: "{topic}".
+
+Target Audience: {target_audience}
+
+Requirements:
+1. Create a suitable blog title.
+2. Organize the outline into numbered sections.
+3. Use the format "Section 1: [Title]".
+4. Include bullet points explaining what each section should cover.
+5. Include a conclusion.
+6. Make the outline useful for the specified target audience.
+"""
+
+    generation = None
+
+    # Optional Langfuse tracing
+    if langfuse:
+        try:
+            generation = langfuse.generation(
+                name="blog_outline_generation",
+                model="llama-3.1-8b-instant",
+                input=user_prompt
+            )
+        except Exception:
+            print("Langfuse tracing initialization failed:")
+            print(traceback.format_exc())
+
+    try:
+        # Call Groq API
+        completion = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": user_prompt
+                }
+            ],
+            temperature=0.7,
+            max_tokens=2500
         )
 
-    elif not api_key:
-        st.error(
-            "GROQ_API_KEY is missing. Add it under "
-            "Hugging Face Space Settings → Variables and secrets."
-        )
+        output_text = completion.choices[0].message.content
+
+        if not output_text:
+            raise ValueError("Groq returned an empty response.")
+
+        # Record successful generation
+        if generation:
+            try:
+                generation.update(output=output_text)
+            except Exception:
+                print("Langfuse output tracking failed:")
+                print(traceback.format_exc())
+
+        return output_text
+
+    except Exception as e:
+        # Print full details in Hugging Face Space Logs
+        print("GROQ API ERROR")
+        print(traceback.format_exc())
+
+        # Show diagnostic details in the app
+        st.error("The request to the Groq API failed.")
+        st.write("Error type:")
+        st.code(type(e).__name__)
+
+        st.write("Error details:")
+        st.code(str(e))
+
+        cause = e.__cause__ or e.__context__
+
+        if cause:
+            st.write("Underlying cause:")
+            st.code(f"{type(cause).__name__}: {cause}")
+
+        # Record failure without hiding the original error
+        if generation:
+            try:
+                generation.update(
+                    output="Generation failed"
+                )
+            except Exception:
+                print("Langfuse error tracking failed:")
+                print(traceback.format_exc())
+
+        return None
+
+
+# -----------------------------
+# User interface
+# -----------------------------
+with st.form("outline_form"):
+
+    topic = st.text_input(
+        "What is the topic of your blog?",
+        placeholder="e.g., Impact of AI in modern education"
+    )
+
+    audience = st.text_input(
+        "Target Audience",
+        value="General Public",
+        placeholder="e.g., Teachers, Tech Enthusiasts"
+    )
+
+    submit_button = st.form_submit_button(
+        label="Generate Outline"
+    )
+
+
+# -----------------------------
+# Display results
+# -----------------------------
+if submit_button:
+
+    if not topic.strip():
+        st.warning("Please enter a valid blog topic.")
+
+    elif not audience.strip():
+        st.warning("Please enter a target audience.")
 
     else:
-        try:
-            with st.spinner("Generating outline..."):
-
-                llm = ChatGroq(
-                    model="openai/gpt-oss-120b",
-                    temperature=0,
-                    api_key=api_key,
-                    timeout=60,
-                    max_retries=1
-                )
-
-                chain = prompt | llm | parser
-
-                response = chain.invoke({
-                    "topic": topic.strip(),
-                    "audience": (
-                        audience.strip()
-                        if audience.strip()
-                        else "General Audience"
-                    )
-                })
-
-            st.success("Outline Generated Successfully!")
-
-            # Blog title
-            st.markdown("## 📝 Blog Title")
-            st.markdown(
-                '<div class="blog-card">',
-                unsafe_allow_html=True
+        with st.spinner("Generating your blog outline..."):
+            raw_result = generate_outline(
+                topic.strip(),
+                audience.strip()
             )
-            st.subheader(response.blog_title)
-            st.markdown("</div>", unsafe_allow_html=True)
 
-            # Outline sections
-            st.markdown("## 📚 Outline Sections")
+        if raw_result:
+            st.success("✨ Your Blog Outline is Ready!")
+            st.markdown("---")
 
-            for i, section in enumerate(
-                response.outline_sections,
-                start=1
-            ):
-                st.markdown(f"### Section {i}")
-                st.write(section)
+            clean_result = raw_result.replace("**", "")
 
-            # Audience and writing goal
-            col1, col2 = st.columns(2)
+            # Separate appendix, if present
+            appendix_content = None
 
-            with col1:
-                st.markdown("### 🎯 Target Audience")
-                st.info(response.target_audience)
+            if "Appendix:" in clean_result:
+                main_outline, appendix_content = (
+                    clean_result.split("Appendix:", 1)
+                )
+            elif "Appendix" in clean_result:
+                main_outline, appendix_content = (
+                    clean_result.split("Appendix", 1)
+                )
+            else:
+                main_outline = clean_result
 
-            with col2:
-                st.markdown("### 🚀 Writing Goal")
-                st.success(response.writing_goal)
+            # Display sections
+            sections = main_outline.split("Section ")
 
-        except Exception as e:
-            st.error(f"Error type: {type(e).__name__}")
-            st.code(str(e))
+            if len(sections) > 1:
 
-            print("FULL TRACEBACK:")
-            traceback.print_exc()
+                if sections[0].strip():
+                    st.markdown(sections[0].strip())
 
-            cause = getattr(e, "__cause__", None)
+                for section in sections[1:]:
+                    lines = section.split("\n", 1)
 
-            if cause:
-                print("UNDERLYING CAUSE:", repr(cause))
+                    header = f"Section {lines[0].strip()}"
+
+                    body = (
+                        lines[1].strip()
+                        if len(lines) > 1
+                        else ""
+                    )
+
+                    with st.container(border=True):
+                        st.subheader(header)
+                        st.markdown(body)
+
+            else:
+                with st.container(border=True):
+                    st.markdown(main_outline.strip())
+
+            # Display appendix
+            if appendix_content:
+                with st.container(border=True):
+                    st.subheader("📚 Appendix & Extras")
+                    st.markdown(appendix_content.strip())
