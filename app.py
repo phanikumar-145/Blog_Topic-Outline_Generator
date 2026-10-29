@@ -1,14 +1,18 @@
+
 import os
 import streamlit as st
+import httpx
+
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-
+# Load environment variables
 load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+
 # -----------------------------
 # Streamlit Page Configuration
 # -----------------------------
@@ -22,16 +26,43 @@ st.title("📝 AI Blog Outline Generator")
 st.write("Generate professional blog outlines instantly.")
 
 # -----------------------------
-# Load Groq API Key
+# Check API Key
 # -----------------------------
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-
 if not GROQ_API_KEY:
     st.error(
-        "GROQ_API_KEY is missing. Add it in "
-        "Hugging Face Space Settings → Variables and secrets."
+        "Groq API key is missing. Add GROQ_API_KEY to your "
+        "local .env file or Hugging Face Space secrets."
     )
     st.stop()
+
+# -----------------------------
+# Test Groq Connection
+# -----------------------------
+with st.expander("Connection diagnostics"):
+    st.write("Groq API key configured: True")
+
+    try:
+        response = httpx.get(
+            "https://api.groq.com/openai/v1/models",
+            timeout=15
+        )
+        st.write("Groq DNS/HTTPS connection: successful")
+        st.write("Groq HTTP status:", response.status_code)
+
+        if response.status_code == 401:
+            st.warning(
+                "The endpoint is reachable, but this unauthenticated "
+                "test does not verify your API key."
+            )
+
+    except httpx.TimeoutException:
+        st.warning(
+            "Connection timed out. Try again and check Groq's status."
+        )
+    except httpx.RequestError as e:
+        st.warning(
+            f"Connection test failed: {type(e).__name__}: {e}"
+        )
 
 # -----------------------------
 # Initialize Groq Model
@@ -110,45 +141,55 @@ with st.form("blog_outline_form"):
 # Generate Outline
 # -----------------------------
 if submitted:
-    if not topic.strip():
-        st.warning("Please enter a blog topic.")
+    topic = topic.strip()
+    audience = audience.strip()
 
-    elif not audience.strip():
+    if len(topic) < 3 or not any(c.isalnum() for c in topic):
+        st.warning(
+            "Please enter a meaningful blog topic "
+            "containing at least 3 characters."
+        )
+
+    elif not audience:
         st.warning("Please enter a target audience.")
 
     else:
         try:
             with st.spinner("Generating your blog outline..."):
-                response = chain.invoke({
-                    "topic": topic.strip(),
-                    "audience": audience.strip()
+                result = chain.invoke({
+                    "topic": topic,
+                    "audience": audience
                 })
 
             st.success("Your blog outline is ready!")
             st.markdown("---")
-            st.markdown(response)
+            st.markdown(result)
 
             st.download_button(
                 label="Download Outline",
-                data=response,
+                data=result,
                 file_name="blog_outline.txt",
                 mime="text/plain"
             )
 
         except Exception as e:
             st.error("Failed to generate the blog outline.")
-
-            # Show the error without exposing the API key
             st.write("Error type:")
             st.code(type(e).__name__)
 
-            error_message = str(e).replace(
-                GROQ_API_KEY, "[REDACTED]"
-            )
+            # Avoid showing the API key in error output
+            error_message = str(e)
+            if GROQ_API_KEY:
+                error_message = error_message.replace(
+                    GROQ_API_KEY, "[REDACTED]"
+                )
+
             st.write("Error details:")
             st.code(error_message)
 
             st.info(
-                "Check your Groq API key, Hugging Face Space "
-                "secrets, and application logs."
+                "If the error is a connection error, check the "
+                "Groq service status and Hugging Face Space logs. "
+                "If it is a model error, verify the model ID in "
+                "Groq's supported models documentation."
             )
