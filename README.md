@@ -1,8 +1,8 @@
-# 📝 AI Blog Topic & Outline Generator
+#  AI Blog Topic & Outline Generator
 
 An AI-powered application that generates structured, SEO-friendly blog outlines based on user-provided topics and target audiences. Built using Python, Streamlit, LangChain, and Groq LLM API.
 
-## 🚀 Project Overview
+##  Project Overview
 
 Creating a well-structured blog outline is an important first step in content writing. However, researching topics, organizing ideas, and creating relevant headings can take considerable time.
 
@@ -12,7 +12,7 @@ Users provide a blog topic and target audience, and the application generates a 
 
 The application helps content creators, bloggers, students, and digital marketers organize their ideas and speed up their content planning process.
 
-## 🎯 Project Objectives
+##  Project Objectives
 
 - Automate blog outline generation using Generative AI.
 - Generate relevant and engaging blog titles.
@@ -22,7 +22,7 @@ The application helps content creators, bloggers, students, and digital marketer
 - Reduce manual effort in blog planning.
 - Provide an easy-to-use web interface.
 
-## ✨ Key Features
+##  Key Features
 
 - **AI-Powered Generation:** Uses Groq LLM API to generate blog outlines.
 - **Topic-Based Generation:** Creates outlines based on user-provided topics.
@@ -33,7 +33,7 @@ The application helps content creators, bloggers, students, and digital marketer
 - **Download Option:** Allows users to download generated outlines.
 - **Interactive Interface:** Simple and user-friendly Streamlit application.
 
-## 🛠️ Technologies Used
+##  Technologies Used
 
 | Technology | Purpose |
 |---|---|
@@ -45,7 +45,7 @@ The application helps content creators, bloggers, students, and digital marketer
 | LangChain Output Parsers | Structured response parsing |
 | Python-Dotenv | Environment variable management |
 
-## 🏗️ Project Architecture
+##  Project Architecture
 
 ```text
 User Input
@@ -75,7 +75,7 @@ Streamlit User Interface
 Display and Download Outline
 ```
 
-## 📂 Project Structure
+##  Project Structure
 
 ```text
 Blog_Topic-Outline_Generator/
@@ -100,7 +100,7 @@ Blog_Topic-Outline_Generator/
 - `Dockerfile` – Provides Docker-based application configuration.
 - `.gitignore` – Specifies files excluded from Git tracking.
 
-## ⚙️ Installation and Setup
+##  Installation and Setup
 
 ### 1. Clone the Repository
 
@@ -164,7 +164,7 @@ The application will open in your browser at:
 http://localhost:8501
 ```
 
-## 🖥️ How to Use the Application
+##  How to Use the Application
 
 1. Open the application in your browser.
 2. Enter your desired blog topic.
@@ -174,7 +174,7 @@ http://localhost:8501
 6. Review the generated blog structure.
 7. Download the generated outline.
 
-## 💡 Example Input
+## Example Input
 
 **Blog Topic:**
 
@@ -184,7 +184,7 @@ Artificial Intelligence in Healthcare
 
 Students and Healthcare Professionals
 
-## 📄 Expected Output
+##  Expected Output
 
 The generated outline can include:
 
@@ -199,13 +199,13 @@ The generated outline can include:
 
 *The generated content depends on the topic, audience, prompt instructions, and LLM response.*
 
-## 🔐 Environment Variables
+##  Environment Variables
 
 | Variable | Description |
 |---|---|
 | `GROQ_API_KEY` | API key required to access the Groq LLM service |
 
-## 🐳 Docker Support
+##  Docker Support
 
 The repository includes a Dockerfile for containerized deployment.
 
@@ -221,7 +221,7 @@ To run the container:
 docker run -p 7860:7860 --env-file .env blog-outline-generator
 ```
 
-## 🌟 Real-World Applications
+##  Real-World Applications
 
 - Blog content planning.
 - SEO content strategy.
@@ -231,7 +231,7 @@ docker run -p 7860:7860 --env-file .env blog-outline-generator
 - Article and research planning.
 - Content writing assistance.
 
-## 🔮 Future Enhancements
+##  Future Enhancements
 
 - Generate complete blog articles.
 - Add multiple writing styles and tones.
@@ -242,7 +242,7 @@ docker run -p 7860:7860 --env-file .env blog-outline-generator
 - Add user authentication.
 - Integrate additional LLM providers.
 
-## 👨‍💻 Author
+##  Author
 
 **Phani Kumar**
 
@@ -253,6 +253,6 @@ AI/ML & Generative AI Developer
 
 ---
 
-⭐ If you find this project useful, consider giving it a star!
+ If you find this project useful, consider giving it a star!
 
 **Built with Python, LangChain, Groq, and Generative AI.**
